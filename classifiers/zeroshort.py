@@ -36,7 +36,7 @@ class ZeroShotSentimentProcessor:
                         self.classifier = pipeline(
                             "zero-shot-classification", 
                             model="facebook/bart-large-mnli",
-                            device=-1,  # Force CPU usage for better thread safety
+                            device=-1,
                             return_all_scores=True
                         )
                         self._initialized = True
@@ -55,8 +55,7 @@ class ZeroShotSentimentProcessor:
             sync_logger.warning("Zero-Shot classifier not available, returning neutral")
             return "neutral"
         
-        # Truncate text to avoid memory issues
-        max_length = 512  # Reduced from 1000 for better performance
+        max_length = 512
         if len(text) > max_length:
             text = text[:max_length]
         
@@ -94,14 +93,13 @@ class ZeroShotSentimentProcessor:
                 sync_logger.warning("No company provided for news processing")
                 return None
                 
-            # Combine title and content for better sentiment analysis
             combined_text = f"{title}. {content}" if title else content
             
             sentiment = self.predict(combined_text)
             negative_flag = self.flag_negative_news(combined_text)
 
             return {
-                "company_name": str(company),  # Ensure it's a string
+                "company_name": str(company),
                 "title": str(title) if title else "",
                 "content": str(content) if content else "",
                 "sentiment": sentiment,
@@ -126,7 +124,6 @@ class ZeroShotSentimentProcessor:
             company_sentiments = defaultdict(list)
             company_negative_flags = defaultdict(bool)
 
-            # Group by company
             for result in processed_results:
                 if not result or not result.get('company_name'):
                     continue
@@ -138,10 +135,9 @@ class ZeroShotSentimentProcessor:
                 company_sentiments[company].append(sentiment_score)
                 company_negative_flags[company] = company_negative_flags[company] or negative_flag
 
-            # Generate summaries
             summary = []
             for company, scores in company_sentiments.items():
-                if not scores:  # Skip companies with no valid scores
+                if not scores:
                     continue
                     
                 avg_score = sum(scores) / len(scores)
@@ -181,5 +177,4 @@ class ZeroShotSentimentProcessor:
             "thread": threading.current_thread().name
         }
 
-# Create the global instance
 zeroshort_classifier = ZeroShotSentimentProcessor()

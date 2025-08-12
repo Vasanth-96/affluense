@@ -33,7 +33,6 @@ class FinBertSentimentProcessor:
                 if not self._initialized:  # Proper double-check pattern
                     try:
                         logger.info(f"Initializing FinBERT classifier for thread: {threading.current_thread().name}")
-                        # Use pipeline like ZeroShot for consistency and efficiency
                         self.classifier = pipeline(
                             "text-classification",
                             model=self.model_name,
@@ -56,13 +55,11 @@ class FinBertSentimentProcessor:
             logger.warning("FinBERT classifier not available, returning neutral")
             return "neutral"
 
-        # Truncate text to match ZeroShot approach
         max_length = 512
         if len(text) > max_length:
             text = text[:max_length]
 
         try:
-            # Use pipeline similar to ZeroShot
             result = self.classifier(text)
             if result and len(result) > 0:
                 # Get the label with highest score
@@ -188,5 +185,4 @@ class FinBertSentimentProcessor:
             "thread": threading.current_thread().name
         }
 
-# Create the global instance
 finbert_classifier = FinBertSentimentProcessor()

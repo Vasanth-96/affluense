@@ -1,6 +1,7 @@
 from models.models import ScrapedRequest
 from typing import List, Dict
 
+# uncomment for more results
 def generate_initial_search_queries(request: ScrapedRequest) -> List[str]:
     # Generate initial search queries based on the request data
     queries = [
