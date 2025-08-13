@@ -19,7 +19,7 @@ from utils.enums import ClassifierType, Sentiment
 from classifiers.finbert import finbert_classifier
 from classifiers.zeroshort import zeroshort_classifier
 from utils.threadpool import THREAD_POOL
-
+from typing import Dict, List
 
 
 def classify_sync(content: str, title: str, company: str):
@@ -101,7 +101,7 @@ async def scrape_and_analyze_news(request: ScrapedRequest):
         companies_list = list(companies)
         companies_str = ", ".join(companies_list)
         unique_companies_str = await langchain_service.process_query_async_companies(
-            "give me unique company names from the list", companies_str
+            f"name is {request.name} and connected company is {request.company}", companies_str
         )
 
         # Convert to list
@@ -134,15 +134,17 @@ async def scrape_and_analyze_news(request: ScrapedRequest):
         logger.info(f"Found {len(news_search_results)} news articles to scrape.")
         news_search_urls = extract_urls_from_results(news_search_results)
 
-        classification_tasks = []
+        # Collect all news data first for batch processing
+        news_items = []
 
         async for result in scraper.scrape_urls_stream_immediate(news_search_urls):
             if result['status'] == 'success':
                 content = result.get("content")
                 title = result.get("title")
-                company = None
                 url = result.get("url")
+                company = None
 
+                # Find associated company
                 for comp, results_list in company_news_mapping.items():
                     for news_item in results_list:
                         item_url = (
@@ -157,24 +159,31 @@ async def scrape_and_analyze_news(request: ScrapedRequest):
                         break
 
                 if content and title and company:
-                    task = asyncio.create_task(
-                        process_news_with_thread_pool(content, title, company)
-                    )
-                    classification_tasks.append(task)
+                    news_items.append({
+                        'title': title,
+                        'content': content,
+                        'company': company
+                    })
 
-        logger.info(
-            f"Processing {len(classification_tasks)} articles in parallel threads")
-        classification_results = await asyncio.gather(*classification_tasks, return_exceptions=True)
+        logger.info(f"Processing {len(news_items)} articles in batch")
+        
+        async def process_batch():
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(
+                THREAD_POOL, 
+                batch_classify_sync, 
+                news_items
+            )
+        
+        processed_results = await process_batch()
 
-        processed_results = []
-        for result in classification_results:
-            if result is not None and not isinstance(result, Exception):
-                processed_results.append(result)
-            elif isinstance(result, Exception):
-                logger.error(f"Classification error: {str(result)}")
+        valid_processed_results = [
+            result for result in processed_results 
+            if result is not None
+        ]
 
         # Generate summary
-        summary = await generate_summary_with_thread_pool(processed_results)
+        summary = await generate_summary_with_thread_pool(valid_processed_results)
 
         response_data = []
         for item in summary:
@@ -193,3 +202,17 @@ async def scrape_and_analyze_news(request: ScrapedRequest):
     except Exception as e:
         logger.error(f"Error occurred during processing: {str(e)}")
         return ScrapedResponse(result=[])
+
+def batch_classify_sync(news_items: List[Dict]):
+    """Synchronous batch classification function"""
+    try:
+        if CLASSIFIER_TYPE == ClassifierType.ZEROSHORT:
+            print(f"Using Zero-Shot Batch Sentiment Classification for {len(news_items)} items")
+            return zeroshort_classifier.process_news_batch(news_items)
+        elif CLASSIFIER_TYPE == ClassifierType.FINBERT:
+            print(f"Using FinBERT Batch Sentiment Classification for {len(news_items)} items")
+            return finbert_classifier.process_news_batch(news_items)
+        return []
+    except Exception as e:
+        print(f"Error in batch classification: {str(e)}")
+        return []

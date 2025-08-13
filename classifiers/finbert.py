@@ -6,17 +6,21 @@ import torch.nn.functional as F
 from utils.sync_logger import sync_logger as logger
 from utils.enums import Sentiment
 import threading
+from typing import Dict, List
+
 
 NEGATIVE_KEYWORDS = [
     "fraud", "scam", "lawsuit", "corruption", "controversy",
     "penalty", "fine", "arrest", "investigation", "illegal"
 ]
 
+
 SENTIMENT_SCORES = {
     "positive": 1,
     "neutral": 0,
     "negative": -1
 }
+
 
 class FinBertSentimentProcessor:
     def __init__(self):
@@ -44,6 +48,7 @@ class FinBertSentimentProcessor:
                     except Exception as e:
                         logger.error(f"Failed to initialize FinBERT classifier: {str(e)}")
                         self.classifier = None
+
 
     def predict(self, text: str) -> str:
         """Predict sentiment using FinBERT"""
@@ -79,6 +84,114 @@ class FinBertSentimentProcessor:
         except Exception as e:
             logger.error(f"Error in FinBERT sentiment prediction: {str(e)}")
             return "neutral"
+
+    def predict_batch(self, texts: List[str]) -> List[str]:
+        """Predict sentiment for multiple texts in batch"""
+        if not texts:
+            return []
+        
+        self._ensure_classifier()
+        if self.classifier is None:
+            return ["neutral"] * len(texts)
+        
+        # Truncate texts to max length
+        max_length = 512
+        processed_texts = [text[:max_length] if text and len(text) > max_length 
+                          else (text or "") for text in texts]
+        
+        try:
+            # FinBERT pipeline can handle batch processing
+            results = []
+            
+            # Process in smaller batches to avoid memory issues
+            batch_size = 16  # Adjust based on your memory constraints
+            for i in range(0, len(processed_texts), batch_size):
+                batch_texts = processed_texts[i:i + batch_size]
+                
+                # Filter empty texts
+                valid_texts = [text for text in batch_texts if text.strip()]
+                if not valid_texts:
+                    results.extend(["neutral"] * len(batch_texts))
+                    continue
+                
+                try:
+                    batch_results = self.classifier(valid_texts)
+                    
+                    # Process results
+                    valid_idx = 0
+                    for text in batch_texts:
+                        if not text.strip():
+                            results.append("neutral")
+                        else:
+                            if valid_idx < len(batch_results):
+                                result = batch_results[valid_idx]
+                                if isinstance(result, list) and result:
+                                    # Get the label with highest score
+                                    best_result = max(result, key=lambda x: x['score'])
+                                    label = best_result['label'].lower()
+                                    
+                                    if 'positive' in label:
+                                        results.append("positive")
+                                    elif 'negative' in label:
+                                        results.append("negative")
+                                    else:
+                                        results.append("neutral")
+                                else:
+                                    results.append("neutral")
+                                valid_idx += 1
+                            else:
+                                results.append("neutral")
+                                
+                except Exception as batch_e:
+                    logger.error(f"Error in batch processing: {str(batch_e)}")
+                    results.extend(["neutral"] * len(batch_texts))
+            
+            return results
+            
+        except Exception as e:
+            logger.error(f"Error in batch FinBERT prediction: {str(e)}")
+            return ["neutral"] * len(texts)
+
+    def process_news_batch(self, news_items: List[Dict]) -> List[Dict]:
+        """Process multiple news items in batch"""
+        if not news_items:
+            return []
+        
+        # Prepare texts for batch processing
+        texts = []
+        for item in news_items:
+            title = item.get('title', '')
+            content = item.get('content', '')
+            combined_text = f"{title}. {content}" if title else content
+            texts.append(combined_text)
+        
+        # Get batch predictions
+        sentiments = self.predict_batch(texts)
+        
+        # Process results
+        results = []
+        for i, (item, sentiment) in enumerate(zip(news_items, sentiments)):
+            try:
+                company = item.get('company')
+                title = item.get('title', '')
+                content = item.get('content', '')
+                combined_text = texts[i]
+                
+                negative_flag = self.flag_negative_news(combined_text)
+                
+                results.append({
+                    "company_name": str(company) if company else "",
+                    "title": str(title),
+                    "content": str(content),
+                    "sentiment": sentiment,
+                    "sentiment_score": SENTIMENT_SCORES.get(sentiment, 0),
+                    "negative_news_flag": negative_flag
+                })
+            except Exception as e:
+                logger.error(f"Error processing news item {i}: {str(e)}")
+                continue
+        
+        return results
 
     def flag_negative_news(self, text: str) -> bool:
         """Check if text contains negative keywords"""
@@ -173,7 +286,7 @@ class FinBertSentimentProcessor:
             if self.classifier is not None:
                 self.classifier = None
                 self._initialized = False
-                logger.info(f"Cleaned up FinBERT classifier")
+                logger.info(f"Cleaned up FinBERT classifier for thread: {threading.current_thread().name}")
         except Exception as e:
             logger.error(f"Error during cleanup: {str(e)}")
 
@@ -184,5 +297,6 @@ class FinBertSentimentProcessor:
             "classifier_available": self.classifier is not None,
             "thread": threading.current_thread().name
         }
+
 
 finbert_classifier = FinBertSentimentProcessor()

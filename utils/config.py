@@ -1,2 +1,2 @@
 OLLAMA_MODEL = "mistral:latest"
-CLASSIFIER_TYPE = "zeroshort"
+CLASSIFIER_TYPE = "finbert"

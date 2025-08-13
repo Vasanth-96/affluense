@@ -3,7 +3,7 @@ from transformers import pipeline
 import logging
 from utils.enums import Sentiment
 import threading
-
+from typing import Dict, List
 # Set up basic logging for sync operations
 logging.basicConfig(level=logging.INFO)
 sync_logger = logging.getLogger(__name__)
@@ -65,6 +65,73 @@ class ZeroShotSentimentProcessor:
         except Exception as e:
             sync_logger.error(f"Error in Zero-Shot sentiment prediction: {str(e)}")
             return "neutral"
+    
+    def predict_batch(self, texts: List[str]) -> List[str]:
+        """Predict sentiment for multiple texts in batch"""
+        if not texts:
+            return []
+        
+        self._ensure_classifier()
+        if self.classifier is None:
+            return ["neutral"] * len(texts)
+        
+        # Truncate texts to max length
+        max_length = 512
+        processed_texts = [text[:max_length] if text and len(text) > max_length 
+                        else (text or "") for text in texts]
+        
+        try:
+            # Process all texts in a single batch
+            results = []
+            for text in processed_texts:
+                if not text.strip():
+                    results.append("neutral")
+                else:
+                    result = self.classifier(text, self.candidate_labels)
+                    results.append(result['labels'][0] if result and result.get('labels') else "neutral")
+            return results
+        except Exception as e:
+            sync_logger.error(f"Error in batch Zero-Shot prediction: {str(e)}")
+            return ["neutral"] * len(texts)
+
+    def process_news_batch(self, news_items: List[Dict]) -> List[Dict]:
+        """Process multiple news items in batch"""
+        if not news_items:
+            return []
+        
+        texts = []
+        for item in news_items:
+            title = item.get('title', '')
+            content = item.get('content', '')
+            combined_text = f"{title}. {content}" if title else content
+            texts.append(combined_text)
+        
+        sentiments = self.predict_batch(texts)
+        
+        results = []
+        for i, (item, sentiment) in enumerate(zip(news_items, sentiments)):
+            try:
+                company = item.get('company')
+                title = item.get('title', '')
+                content = item.get('content', '')
+                combined_text = texts[i]
+                
+                negative_flag = self.flag_negative_news(combined_text)
+                
+                results.append({
+                    "company_name": str(company) if company else "",
+                    "title": str(title),
+                    "content": str(content),
+                    "sentiment": sentiment,
+                    "sentiment_score": SENTIMENT_SCORES.get(sentiment, 0),
+                    "negative_news_flag": negative_flag
+                })
+            except Exception as e:
+                sync_logger.error(f"Error processing news item {i}: {str(e)}")
+                continue
+        
+        return results
+
 
     def flag_negative_news(self, text: str) -> bool:
         """Check if text contains negative keywords"""

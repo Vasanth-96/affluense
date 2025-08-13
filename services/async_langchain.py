@@ -10,16 +10,23 @@ class LangChainAsyncService:
         self.prompt_template = PromptTemplate(
             input_variables=["query", "text"],
             template=(
-                "You are an assistant that extracts company names from text.\n"
-                "QUERY: {query}\n\n"
-                "TEXT:\n{text}\n\n"
+                "You are an expert assistant in identifying companies with confirmed connections to high-net-worth individuals.\n"
+                "QUERY (person's name and possibly one known company): {query}\n\n"
+                "TEXT (context to analyze):\n{text}\n\n"
                 "TASK:\n"
-                "- Identify ONLY companies directly associated with the person in the query.\n"
-                "- Output EXACTLY a comma-separated list of company names.\n"
-                "- No numbering, bullet points, or extra words.\n"
-                "- If none found, output exactly: No companies found.\n\n"
+                "1. Determine if the text is relevant to the person in QUERY.\n"
+                "2. Extract ONLY company names where there is clear, explicit, or strongly implied evidence that the person:\n"
+                "   - Founded, co-founded, or started the company.\n"
+                "   - Owns, partly owns, or has a significant stake in the company.\n"
+                "   - Is a partner, chairman, CEO, board member, or holds a leadership role.\n"
+                "   - Directly controls a subsidiary or parent company.\n"
+                "   - Is in a formal joint venture or business partnership with the company.\n"
+                "3. Ignore companies if the text only mentions them in passing without evidence of a formal or ownership connection.\n"
+                "4. Normalize company names to their most complete, formal version (e.g., 'Tesla' → 'Tesla Inc').\n"
+                "5. Output exactly a comma-separated list of company names without numbering, bullet points, or extra words.\n"
+                "6. If no qualifying companies are found, output exactly: No companies found.\n\n"
                 "FORMAT EXAMPLE:\n"
-                "Microsoft Corporation, Apple Inc, Tesla\n\n"
+                "Microsoft Corporation, Apple Inc, Tesla Inc\n\n"
                 "OUTPUT:"
             ),
         )
@@ -28,19 +35,22 @@ class LangChainAsyncService:
         self.unique_companies_template = PromptTemplate(
             input_variables=["query", "text"],
             template=(
-                "You are given a list of company names. Clean and deduplicate them.\n"
-                "QUERY: {query}\n\n"
-                "COMPANIES:\n{text}\n\n"
+                "You are a data-cleaning assistant specializing in company names.\n"
+                "QUERY (person and possible known company): {query}\n\n"
+                "RAW COMPANY LIST:\n{text}\n\n"
                 "TASK:\n"
-                "- Remove duplicates.\n"
-                "- Keep correct spelling and full names.\n"
-                "- Output EXACTLY a comma-separated list.\n"
-                "- If none remain, output exactly: No companies found.\n\n"
+                "1. Remove duplicates (treat names with different capitalization, spacing, or punctuation as the same or any other similar as same).\n"
+                "2. Merge synonyms/abbreviations into the most complete, formal company name available.\n"
+                "3. Keep correct spelling and retain company type suffixes (Inc., Ltd., LLC, etc.) when available.\n"
+                "4. Remove leading/trailing spaces.\n"
+                "5. Output exactly a comma-separated list with no numbering, bullets, or extra text.\n"
+                "6. If no valid companies remain, output exactly: No companies found.\n\n"
                 "FORMAT EXAMPLE:\n"
-                "Microsoft Corporation, Apple Inc, Tesla\n\n"
+                "Microsoft Corporation, Apple Inc, Tesla Inc\n\n"
                 "OUTPUT:"
             ),
         )
+
 
         self.chain = self.prompt_template | self.llm | StrOutputParser()
         self.companies_chain = self.unique_companies_template | self.llm | StrOutputParser()
