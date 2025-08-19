@@ -6,16 +6,16 @@ def generate_initial_search_queries(request: ScrapedRequest) -> List[str]:
     # Generate initial search queries based on the request data
     queries = [
         f"{request.name} {request.company}",
-        # f"Who is {request.name} and what company has he worked for?"
+        f"Who is {request.name} and what companies has he worked for?"
     ]
     return queries
 
 def generate_follow_up_queries(company: str) -> List[str]:
     news_queries = [
         f"Latest news about {company}",
-        # f"Fraud allegations against {company}",
-        # f"any recent developments regarding {company}",
-        # f"any negative news about {company}"
+        f"Fraud allegations against {company}",
+        f"any recent developments regarding {company}",
+        f"any negative news about {company}"
     ]
     return news_queries
 

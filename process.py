@@ -80,6 +80,7 @@ async def scrape_and_analyze_news(request: ScrapedRequest):
             search_results.extend(await duck_duck_go_searcher.search_news(each))
 
         search_results_urls = extract_urls_from_results(search_results)
+        # logger.info(search_results_urls)
         logger.info(
             f"Found {len(search_results_urls)} URLs to scrape for company discovery.")
 
@@ -109,7 +110,8 @@ async def scrape_and_analyze_news(request: ScrapedRequest):
             c.strip() for c in unique_companies_str.split(',')
             if c.strip()
         ]
-
+        logger.info(f"the unique companies found are : {unique_companies}")
+        logger.info(f"no of unique companies found are : {len(unique_companies)}")
         company_news_mapping = {}
 
         for company in unique_companies:
